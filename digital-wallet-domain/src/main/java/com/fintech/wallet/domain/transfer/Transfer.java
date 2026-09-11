@@ -81,6 +81,32 @@ public class Transfer {
         ));
     }
 
+    public Transfer(TransferId id, String tenantId, AccountId sourceAccountId,
+                    AccountId destinationAccountId, Money amount, String idempotencyKey,
+                    TransferStatus status, String failureReason, Instant createdAt,
+                    Instant updatedAt, long version) {
+        if (id == null || tenantId == null || sourceAccountId == null ||
+                destinationAccountId == null || amount == null || idempotencyKey == null ||
+                status == null || createdAt == null || updatedAt == null) {
+            throw new DomainException(
+                    "Transfer fields cannot be null",
+                    "INVALID_TRANSFER_REHYDRATION",
+                    ""
+            );
+        }
+        this.id = id;
+        this.tenantId = tenantId;
+        this.sourceAccountId = sourceAccountId;
+        this.destinationAccountId = destinationAccountId;
+        this.amount = amount;
+        this.idempotencyKey = idempotencyKey;
+        this.status = status;
+        this.failureReason = failureReason;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+        this.version = version;
+    }
+
     public void markAsValidationPending() {
         if (this.status != TransferStatus.INITIATED) {
             throw new DomainException(
@@ -89,8 +115,7 @@ public class Transfer {
                     "Current status: " + this.status
             );
         }
-        this.status = TransferStatus.PENDING_VALIDATION;
-        this.updatedAt = Instant.now();
+        changeStatus(TransferStatus.PENDING_VALIDATION, null);
     }
 
     public void markAsDebitReserved() {
@@ -101,8 +126,7 @@ public class Transfer {
                     "Current status: " + this.status
             );
         }
-        this.status = TransferStatus.DEBIT_RESERVED;
-        this.updatedAt = Instant.now();
+        changeStatus(TransferStatus.DEBIT_RESERVED, null);
     }
 
     public void markAsCreditProcessing() {
@@ -113,8 +137,7 @@ public class Transfer {
                     "Current status: " + this.status
             );
         }
-        this.status = TransferStatus.CREDIT_PROCESSING;
-        this.updatedAt = Instant.now();
+        changeStatus(TransferStatus.CREDIT_PROCESSING, null);
     }
 
     public void markAsCompleted() {
@@ -125,8 +148,7 @@ public class Transfer {
                     "Current status: " + this.status
             );
         }
-        this.status = TransferStatus.COMPLETED;
-        this.updatedAt = Instant.now();
+        changeStatus(TransferStatus.COMPLETED, null);
 
         this.domainEvents.add(new TransferCompletedEvent(
                 this.id.getValue(),
@@ -142,9 +164,7 @@ public class Transfer {
                     "Current status: " + this.status
             );
         }
-        this.status = TransferStatus.FAILED;
-        this.failureReason = reason;
-        this.updatedAt = Instant.now();
+        changeStatus(TransferStatus.FAILED, reason);
 
         this.domainEvents.add(new TransferFailedEvent(
                 this.id.getValue(),
@@ -160,9 +180,7 @@ public class Transfer {
                     "Current status: " + this.status
             );
         }
-        this.status = TransferStatus.FRAUD_REJECTED;
-        this.failureReason = reason;
-        this.updatedAt = Instant.now();
+        changeStatus(TransferStatus.FRAUD_REJECTED, reason);
 
         this.domainEvents.add(new TransferFailedEvent(
                 this.id.getValue(),
@@ -178,9 +196,7 @@ public class Transfer {
                     "Current status: " + this.status
             );
         }
-        this.status = TransferStatus.COMPENSATED;
-        this.failureReason = "Transfer compensated";
-        this.updatedAt = Instant.now();
+        changeStatus(TransferStatus.COMPENSATED, "Transfer compensated");
     }
 
     public List<DomainEvent> getDomainEvents() {
@@ -189,6 +205,35 @@ public class Transfer {
 
     public void clearDomainEvents() {
         this.domainEvents.clear();
+    }
+
+    public void restoreState(TransferStatus status, String failureReason, Instant updatedAt, long version) {
+        if (status == null || updatedAt == null || version < 0) {
+            throw new DomainException(
+                    "Invalid transfer state for replay",
+                    "INVALID_TRANSFER_REPLAY_STATE",
+                    ""
+            );
+        }
+        this.status = status;
+        this.failureReason = failureReason;
+        this.updatedAt = updatedAt;
+        this.version = version;
+        this.domainEvents.clear();
+    }
+
+    private void changeStatus(TransferStatus newStatus, String reason) {
+        String previousStatus = this.status.name();
+        this.status = newStatus;
+        this.failureReason = reason;
+        this.updatedAt = Instant.now();
+        this.domainEvents.add(new com.fintech.wallet.domain.event.TransferStateChangedEvent(
+                this.id.getValue(),
+                this.tenantId,
+                previousStatus,
+                newStatus.name(),
+                reason
+        ));
     }
 
     protected Transfer() {
