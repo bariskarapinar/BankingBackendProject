@@ -1809,7 +1809,6 @@ If unpublished outbox records grow:
 ## 26. Security and Data Handling
 
 Never commit:
-
 - Database passwords
 - OAuth client secrets
 - JWT signing keys
@@ -1819,7 +1818,6 @@ Never commit:
 - Customer payment data
 
 Use:
-
 - Environment variables
 - Secret-manager references
 - Kubernetes Secrets
